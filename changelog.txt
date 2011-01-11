@@ -1,0 +1,28 @@
+FiveFilters.org: Full-Text RSS
+http://fivefilters.org/content-only/
+CHANGELOG
+------------------------------------
+
+2.2 (2010-10-30)
+ - Character-encoding detection improved (minor change)
+ - Rewriting of relative URLs improved (tracks redirect URLs)
+ - Minor changes to prevent errors in certain hosting environments
+ - Compatibility test file updated with more tests
+
+2.1 (2010-09-13)
+ - Better content extraction (using PHP Readability 1.7.1)
+ - Parallel HTTP requests (using Humble HTTP Agent)
+ - Auto loading of necessary classes
+ - Rewriting of relative URLs (using IRI)
+ - Added compatibility test file (to check if server meets requirements)
+ - Character-encoding support improved (using SimplePie)
+
+1.5 (2010-05-30)
+ - Support for PHP 5.3 (thanks Murilo!)
+ - Character-encoding support improved (favours iconv over mb_convert_encoding)
+
+1.0 (2010-03-05)
+ - Better support for different character-encodings
+ - Auto-cleanup of cache files
+ - Very basic option for load distribution (if you're planning on installing the code on multiple servers)
+ - Separate config file (see config-sample.php) 
