@@ -7,8 +7,8 @@ legend {background:#bfbf30; color:#fff; font:17px/21px Calibri, Arial, Helvetica
 label {font-size:11px; font-weight:bold; color:#666;}
 label.opt {font-weight:normal;}
 dl {clear:both;}
-dt {float:left; text-align:right; width:90px; line-height:25px; margin:0 10px 10px 0;}
-dd {float:left; width:475px; line-height:25px; margin:0 0 10px 0;}
+dt {float:left; text-align:right; width:100px; line-height:25px; margin:0 10px 10px 0;}
+dd {float:left; width:465px; line-height:25px; margin:0 0 10px 0;}
 #footer {font-size:11px;}
 
 #container {width:700px; margin:0 auto;}

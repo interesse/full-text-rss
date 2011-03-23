@@ -918,10 +918,6 @@ class Readability
 	* @return void
 	*/
 	public function killBreaks($node) {
-		// we can't alter HTML directly through innerHTML as you can in JS
-		// so we go through the process of turning a DOM element to a string,
-		// doing the search and replace on the string, then turning it 
-		// back into an element and replacing the old element with the new.
 		$html = $node->innerHTML;
 		$html = preg_replace($this->regexps['killBreaks'], '<br />', $html);
 		$node->innerHTML = $html;

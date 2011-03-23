@@ -42,7 +42,9 @@ class HumbleHttpAgent
 		$this->httpContext = stream_context_create(array(
 			'http' => array(
 				'timeout' => $this->requestOptions['timeout'],
-				'max_redirects' => $this->requestOptions['redirect']
+				'max_redirects' => $this->requestOptions['redirect'],
+				'header' => "User-Agent: PHP/5.2\r\n".
+                    "Accept: */*\r\n"
 				)
 			)
 		);		
@@ -81,8 +83,13 @@ class HumbleHttpAgent
 	}
 	
 	public function validateUrl($url) {
-		$url = filter_var($url, FILTER_VALIDATE_URL, FILTER_FLAG_SCHEME_REQUIRED);
-		if ($url !== false && $url !== null && preg_match('!^https?://!', $url)) {
+		//TODO: run sanitize filter first!
+		$test = filter_var($url, FILTER_VALIDATE_URL, FILTER_FLAG_SCHEME_REQUIRED);
+		// deal with bug http://bugs.php.net/51192 (present in PHP 5.2.13 and PHP 5.3.2)
+		if ($test === false) {
+			$test = filter_var(strtr($url, '-', '_'), FILTER_VALIDATE_URL, FILTER_FLAG_SCHEME_REQUIRED);
+		}
+		if ($test !== false && $test !== null && preg_match('!^https?://!', $url)) {
 			return filter_var($url, FILTER_SANITIZE_URL);
 		} else {
 			return false;

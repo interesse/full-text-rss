@@ -1,10 +1,10 @@
 <?php
 // Create Full-Text Feeds
 // Author: Keyvan Minoukadeh
-// Copyright (c) 2010 Keyvan Minoukadeh
+// Copyright (c) 2011 Keyvan Minoukadeh
 // License: AGPLv3
-// Version: 2.2
-// Date: 2010-10-30
+// Version: 2.5
+// Date: 2011-01-08
 
 /*
 This program is free software: you can redistribute it and/or modify
@@ -54,7 +54,9 @@ function __autoload($class_name) {
 		// Include IRI class for resolving relative URLs
 		'IRI' => 'iri/iri.php',
 		// Include Zend Cache to improve performance (cache results)
-		'Zend_Cache' => 'Zend/Cache.php'
+		'Zend_Cache' => 'Zend/Cache.php',
+		// Include Zend CSS to XPath for dealing with custom patterns
+		'Zend_Dom_Query_Css2Xpath' => 'Zend/Dom/Query/Css2Xpath.php'
 	);
 	if (isset($mapping[$class_name])) {
 		//echo "Loading $class_name\n<br />";
@@ -68,29 +70,9 @@ function __autoload($class_name) {
 ////////////////////////////////
 // Load config file if it exists
 ////////////////////////////////
-// the config values below should be set in config.php (rename config-sample.php if config.php doesn't exist).
-// the values below will only be used if config.php doesn't exist.
-$options->enabled = true;
-$options->restrict = false;
-$options->default_entries = 5;
-$options->max_entries = 10;
-$options->rewrite_relative_urls = true;
-$options->caching = false;
-$options->cache_dir = dirname(__FILE__).'/cache';
-$options->message_to_prepend = '';
-$options->message_to_append = '';
-$options->blocked_urls = array();
-$options->alternative_url = '';
-$options->error_message = '[unable to retrieve full-text content]';
-$options->api_keys = array();
-$options->default_entries_with_key = 5;
-$options->max_entries_with_key = 10;
-$options->message_to_prepend_with_key = '';
-$options->message_to_append_with_key = '';
-$options->error_message_with_key = '[unable to retrieve full-text content]';
-$options->cache_directory_level = 0;
-if (file_exists(dirname(__FILE__).'/config.php')) {
-	require_once(dirname(__FILE__).'/config.php');
+require_once(dirname(__FILE__).'/config.php');
+if (file_exists(dirname(__FILE__).'/custom_config.php')) {
+	require_once(dirname(__FILE__).'/custom_config.php');
 }
 
 //////////////////////////////////////////////
@@ -100,10 +82,6 @@ if (file_exists(dirname(__FILE__).'/config.php')) {
 //////////////////////////////////////////////
 function convert_to_utf8($html, $header=null)
 {
-	$accept = array(
-		'type' => array('application/rss+xml', 'application/xml', 'application/rdf+xml', 'text/xml', 'text/html'),
-		'charset' => array_diff(mb_list_encodings(), array('pass', 'auto', 'wchar', 'byte2be', 'byte2le', 'byte4be', 'byte4le', 'BASE64', 'UUENCODE', 'HTML-ENTITIES', 'Quoted-Printable', '7bit', '8bit'))
-	);
 	$encoding = null;
 	if ($html || $header) {
 		if (is_array($header)) $header = implode("\n", $header);
@@ -111,10 +89,6 @@ function convert_to_utf8($html, $header=null)
 			// error parsing the response
 		} else {
 			$match = end($match); // get last matched element (in case of redirects)
-			if (!in_array(strtolower($match[1]), $accept['type'])) {
-				// type not accepted
-				// TODO: avoid conversion
-			}
 			if (isset($match[2])) $encoding = trim($match[2], '"\'');
 		}
 		if (!$encoding) {
@@ -127,10 +101,6 @@ function convert_to_utf8($html, $header=null)
 		if (!$encoding) {
 			$encoding = 'utf-8';
 		} else {
-			if (!in_array($encoding, array_map('strtolower', $accept['charset']))) {
-				// encoding not accepted
-				// TODO: avoid conversion
-			}
 			if (strtolower($encoding) != 'utf-8') {
 				if (strtolower($encoding) == 'iso-8859-1') {
 					// replace MS Word smart qutoes
@@ -184,17 +154,21 @@ function makeAbsolute($base, $elem) {
 		for ($i = $elems->length-1; $i >= 0; $i--) {
 			$e = $elems->item($i);
 			//$e->parentNode->replaceChild($articleContent->ownerDocument->createTextNode($e->textContent), $e);
-			if ($e->hasAttribute($attr)) {
-				// Trim leading and trailing white space. I don't really like this but 
-				// unfortunately it does appear on some sites. e.g.  <img src=" /path/to/image.jpg" />
-				$url = trim(str_replace('%20', ' ', $e->getAttribute($attr)));
-				$url = str_replace(' ', '%20', $url);
-				if (!preg_match('!https?://!i', $url)) {
-					$absolute = IRI::absolutize($base, $url);
-					if ($absolute) {
-						$e->setAttribute($attr, $absolute);
-					}
-				}
+			makeAbsoluteAttr($base, $e, $attr);
+		}
+		if (strtolower($elem->tagName) == $tag) makeAbsoluteAttr($base, $elem, $attr);
+	}
+}
+function makeAbsoluteAttr($base, $e, $attr) {
+	if ($e->hasAttribute($attr)) {
+		// Trim leading and trailing white space. I don't really like this but 
+		// unfortunately it does appear on some sites. e.g.  <img src=" /path/to/image.jpg" />
+		$url = trim(str_replace('%20', ' ', $e->getAttribute($attr)));
+		$url = str_replace(' ', '%20', $url);
+		if (!preg_match('!https?://!i', $url)) {
+			$absolute = IRI::absolutize($base, $url);
+			if ($absolute) {
+				$e->setAttribute($attr, $absolute);
 			}
 		}
 	}
@@ -233,6 +207,26 @@ if ($options->alternative_url != '' && !isset($_GET['redir']) && mt_rand(0, 100)
 	if (isset($_GET['key'])) $redirect .= '&key='.urlencode($_GET['key']);
 	if (isset($_GET['max'])) $redirect .= '&max='.(int)$_GET['max'];
 	if (isset($_GET['links'])) $redirect .= '&links='.$_GET['links'];
+	if (isset($_GET['exc'])) $redirect .= '&exc='.$_GET['exc'];
+	if (isset($_GET['what'])) $redirect .= '&what='.$_GET['what'];	
+	header("Location: $redirect");
+	exit;
+}
+
+/////////////////////////////////
+// Redirect to hide API key
+/////////////////////////////////
+if (isset($_GET['key']) && ($key_index = array_search($_GET['key'], $options->api_keys)) !== false) {
+	$host = $_SERVER['HTTP_HOST'];
+	$path = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+	$redirect = 'http://'.htmlspecialchars($host.$path).'/makefulltextfeed.php?url='.urlencode($url);
+	$redirect .= '&key='.$key_index;
+	$redirect .= '&hash='.urlencode(sha1($_GET['key'].$url));
+	if (isset($_GET['html'])) $redirect .= '&html='.urlencode($_GET['html']);
+	if (isset($_GET['max'])) $redirect .= '&max='.(int)$_GET['max'];
+	if (isset($_GET['links'])) $redirect .= '&links='.urlencode($_GET['links']);
+	if (isset($_GET['exc'])) $redirect .= '&exc='.urlencode($_GET['exc']);
+	if (isset($_GET['what'])) $redirect .= '&what='.urlencode($_GET['what']);
 	header("Location: $redirect");
 	exit;
 }
@@ -240,20 +234,35 @@ if ($options->alternative_url != '' && !isset($_GET['redir']) && mt_rand(0, 100)
 ///////////////////////////////////////////////
 // Check if the request is explicitly for an HTML page
 ///////////////////////////////////////////////
-$html_only = (isset($_GET['html']) && $_GET['html'] == 'true');
+$html_only = (isset($_GET['html']) && ($_GET['html'] == '1' || $_GET['html'] == 'true'));
 
 ///////////////////////////////////////////////
 // Check if valid key supplied
 ///////////////////////////////////////////////
-$valid_key = (isset($_GET['key']) && in_array($_GET['key'], $options->api_keys));
+$valid_key = false;
+if (isset($_GET['key']) && isset($_GET['hash']) && isset($options->api_keys[(int)$_GET['key']])) {
+	$valid_key = ($_GET['hash'] == sha1($options->api_keys[(int)$_GET['key']].$url));
+}
 
 ///////////////////////////////////////////////
 // Check URL against list of blacklisted URLs
 // TODO: set up better system for this
 ///////////////////////////////////////////////
-foreach ($options->blocked_urls as $blockurl) {
-	if (strstr($url, $blockurl) !== false) {
-		die('URL blocked');
+
+if (!empty($options->allowed_urls)) {
+	$allowed = false;
+	foreach ($options->allowed_urls as $allowurl) {
+		if (strstr($url, $allowurl) !== false) {
+			$allowed = true;
+			break;
+		}
+	}
+	if (!$allowed) die('URL not allowed');
+} else {
+	foreach ($options->blocked_urls as $blockurl) {
+		if (strstr($url, $blockurl) !== false) {
+			die('URL blocked');
+		}
 	}
 }
 
@@ -285,6 +294,50 @@ if (($valid_key || !$options->restrict) && isset($_GET['links']) && in_array($_G
 	$links = 'preserve';
 }
 
+///////////////////////////////////////////////
+// Exclude items if extraction fails
+///////////////////////////////////////////////
+if ($options->exclude_items_on_fail == 'user') {
+	$exclude_on_fail = (isset($_GET['exc']) && ($_GET['exc'] == '1'));
+} else {
+	$exclude_on_fail = $options->exclude_items_on_fail;
+}
+
+///////////////////////////////////////////////
+// Extraction pattern
+///////////////////////////////////////////////
+$auto_extract = true;
+if ($options->extraction_pattern == 'user') {
+	$extract_pattern = (isset($_GET['what']) ? trim($_GET['what']) : 'auto');
+} else {
+	$extract_pattern = trim($options->extraction_pattern);
+}
+if (($extract_pattern != '') && ($extract_pattern != 'auto')) {
+	// split pattern by space (currently only descendants of 'auto' are recognised)
+	$extract_pattern = preg_split('/\s+/', $extract_pattern, 2);
+	if ($extract_pattern[0] == 'auto') { // parent selector is 'auto'
+		$extract_pattern = $extract_pattern[1];
+	} else {
+		$extract_pattern = implode(' ', $extract_pattern);
+		$auto_extract = false;
+	}
+	// Convert CSS to XPath
+	// Borrowed from Symfony's cssToXpath() function: https://github.com/fabpot/symfony/blob/master/src/Symfony/Component/CssSelector/Parser.php
+	// (Itself based on Python's lxml library)
+	if (preg_match('#^\w+\s*$#u', $extract_pattern, $match)) {
+		$extract_pattern = '//'.trim($match[0]);
+	} elseif (preg_match('~^(\w*)#(\w+)\s*$~u', $extract_pattern, $match)) {
+		$extract_pattern = sprintf("%s%s[@id = '%s']", '//', $match[1] ? $match[1] : '*', $match[2]);
+	} elseif (preg_match('#^(\w*)\.(\w+)\s*$#u', $extract_pattern, $match)) {
+		$extract_pattern = sprintf("%s%s[contains(concat(' ', normalize-space(@class), ' '), ' %s ')]", '//', $match[1] ? $match[1] : '*', $match[2]);
+	} else {
+		// if the patterns above do not match, invoke Zend's CSS to Xpath function
+		$extract_pattern = Zend_Dom_Query_Css2Xpath::transform($extract_pattern);
+	}
+} else {
+	$extract_pattern = false;
+}
+
 /////////////////////////////////////
 // Check for valid format
 // (stick to RSS for the time being)
@@ -299,7 +352,7 @@ if ($options->caching) {
 	   'lifetime' => ($valid_key || !$options->restrict) ? 10*60 : 20*60, // cache lifetime of 10 or 20 minutes
 	   'automatic_serialization' => false,
 	   'write_control' => false,
-	   'automatic_cleaning_factor' => 100,
+	   'automatic_cleaning_factor' => $options->cache_cleanup,
 	   'ignore_user_abort' => false
 	);
 	$backendOptions = array(
@@ -315,8 +368,8 @@ if ($options->caching) {
 
 	// getting a Zend_Cache_Core object
 	$cache = Zend_Cache::factory('Core', 'File', $frontendOptions, $backendOptions);
-	$cache_id = md5($max.$url.$valid_key.$links);
-
+	$cache_id = md5($max.$url.$valid_key.$links.$exclude_on_fail.$auto_extract.$extract_pattern.(int)isset($_GET['pubsub']));
+	
 	if ($data = $cache->load($cache_id)) {
 		header("Content-type: text/xml; charset=UTF-8");
 		if (headers_sent()) die('Some data has already been output, can\'t send RSS file');
@@ -339,12 +392,13 @@ if ($valid_key) {
 //////////////////////////////////
 $http = new HumbleHttpAgent();
 
+/*
 if ($options->caching) {
 	$frontendOptions = array(
 	   'lifetime' => 30*60, // cache lifetime of 30 minutes
 	   'automatic_serialization' => true,
 	   'write_control' => false,
-	   'automatic_cleaning_factor' => 100,
+	   'automatic_cleaning_factor' => $options->cache_cleanup,
 	   'ignore_user_abort' => false
 	); 
 	$backendOptions = array(
@@ -360,6 +414,7 @@ if ($options->caching) {
 	$httpCache = Zend_Cache::factory('Core', 'File', $frontendOptions, $backendOptions);
 	$http->useCache($httpCache);
 }
+*/
 
 ////////////////////////////////
 // Tidy config
@@ -416,22 +471,50 @@ if ($html_only || !$result) {
 	} else {
 		die('Error retrieving '.$url);
 	}
-	// Run through Tidy (if it exists).
-	// This fixes problems with some sites which would otherwise
-	// trouble DOMDocument's HTML parsing.
-	if (function_exists('tidy_parse_string')) {
-		$tidy = tidy_parse_string($html, $tidy_config, 'UTF8');
-		if (tidy_clean_repair($tidy)) {
-			$html = $tidy->value;
+	if ($auto_extract) {
+		// Run through Tidy (if it exists).
+		// This fixes problems with some sites which would otherwise
+		// trouble DOMDocument's HTML parsing.
+		if (function_exists('tidy_parse_string')) {
+			$tidy = tidy_parse_string($html, $tidy_config, 'UTF8');
+			if (tidy_clean_repair($tidy)) {
+				$html = $tidy->value;
+			}
+		}
+		$readability = new Readability($html, $effective_url);
+		if ($links == 'footnotes') $readability->convertLinksToFootnotes = true;
+		if (!$readability->init() && $exclude_on_fail) die('Sorry, could not extract content');
+		// content block is detected element
+		$content_block = $readability->getContent();
+	} else {
+		$readability = new Readability($html, $effective_url);
+		// content block is entire document
+		$content_block = $readability->dom;
+	}
+	if ($extract_pattern) {
+		$xpath = new DOMXPath($readability->dom);
+		$elems = @$xpath->query($extract_pattern, $content_block);
+		// check if our custom extraction pattern matched
+		if ($elems && $elems->length > 0) {
+			// get the first matched element
+			$content_block = $elems->item(0);
+			// clean it up
+			$readability->removeScripts($content_block);
+			$readability->prepArticle($content_block);
+		} else {
+			if ($exclude_on_fail) die('Sorry, could not extract content');
+			$content_block = $readability->dom->createElement('p', 'Sorry, could not extract content');
 		}
 	}
-	$readability = new Readability($html, $effective_url);
-	if ($links == 'footnotes') $readability->convertLinksToFootnotes = true;
-	$readability->init();
-	$readability->clean($readability->getContent(), 'select');
-	if ($options->rewrite_relative_urls) makeAbsolute($effective_url, $readability->getContent());
+	$readability->clean($content_block, 'select');
+	if ($options->rewrite_relative_urls) makeAbsolute($effective_url, $content_block);
 	$title = $readability->getTitle()->textContent;
-	$content = $readability->getContent()->innerHTML;
+	if ($extract_pattern) {
+		// get outerHTML
+		$content = $content_block->ownerDocument->saveXML($content_block);
+	} else {
+		$content = $content_block->innerHTML;
+	}
 	if ($links == 'remove') {
 		$content = preg_replace('!</?a[^>]*>!', '', $content);
 	}
@@ -446,6 +529,7 @@ if ($html_only || !$result) {
 	$output = new FeedWriter(); //ATOM an option
 	$output->setTitle($title);
 	$output->setDescription("Content extracted from $url");
+	$output->setXsl('css/feed.xsl'); // Chrome uses this, most browsers ignore it
 	if ($format == 'atom') {
 		$output->setChannelElement('updated', date(DATE_ATOM));
 		$output->setChannelElement('author', array('name'=>'Five Filters', 'uri'=>'http://fivefilters.org'));
@@ -471,7 +555,13 @@ if ($html_only || !$result) {
 $output = new FeedWriter();
 $output->setTitle($feed->get_title());
 $output->setDescription($feed->get_description());
-$output->setLink($feed->get_link());
+$output->setXsl('css/feed.xsl'); // Chrome uses this, most browsers ignore it
+if ($valid_key && isset($_GET['pubsub'])) { // used only on fivefilters.org at the moment
+	$output->addHub('http://fivefilters.superfeedr.com/');
+	$output->addHub('http://pubsubhubbub.appspot.com/');
+	$output->setSelf('http://'.$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI']);
+}
+$output->setLink($feed->get_link()); // Google Reader uses this for pulling in favicons
 if ($img_url = $feed->get_image_url()) {
 	$output->setImage($feed->get_title(), $feed->get_link(), $img_url);
 }
@@ -499,33 +589,82 @@ $http->fetchAll($urls_sanitized);
 $http->cacheAll();
 
 foreach ($items as $key => $item) {
+	$extract_result = false;
 	$permalink = $urls[$key];
 	$newitem = $output->createNewItem();
 	$newitem->setTitle(htmlspecialchars_decode($item->get_title()));
-	if ($permalink !== false) {
-		$newitem->setLink($permalink);
+	if ($valid_key && isset($_GET['pubsub'])) { // used only on fivefilters.org at the moment
+		if ($permalink !== false) {
+			$newitem->setLink('http://fivefilters.org/content-only/redirect.php?url='.urlencode($permalink));
+		} else {
+			$newitem->setLink('http://fivefilters.org/content-only/redirect.php?url='.urlencode($item->get_permalink()));
+		}
 	} else {
-		$newitem->setLink($item->get_permalink());
+		if ($permalink !== false) {
+			$newitem->setLink($permalink);
+		} else {
+			$newitem->setLink($item->get_permalink());
+		}
 	}
 	if ($permalink && $response = $http->get($permalink)) {
 		$effective_url = $response['effective_url'];
 		$html = $response['body'];
 		$html = convert_to_utf8($html, $response['headers']);
-		// Run through Tidy (if it exists).
-		// This fixes problems with some sites which would otherwise
-		// trouble DOMDocument's HTML parsing. (Although sometimes it fails
-		// to return anything, so it's a bit of tradeoff.)
-		if (function_exists('tidy_parse_string')) {
-			$tidy = tidy_parse_string($html, $tidy_config, 'UTF8');
-			$tidy->cleanRepair();
-			$html = $tidy->value;
-		}		
-		$readability = new Readability($html, $effective_url);
-		if ($links == 'footnotes') $readability->convertLinksToFootnotes = true;
-		$readability->init();
-		$readability->clean($readability->getContent(), 'select');
-		if ($options->rewrite_relative_urls) makeAbsolute($effective_url, $readability->getContent());
-		$html = $readability->getContent()->innerHTML;	
+		if ($auto_extract) {
+			// Run through Tidy (if it exists).
+			// This fixes problems with some sites which would otherwise
+			// trouble DOMDocument's HTML parsing. (Although sometimes it fails
+			// to return anything, so it's a bit of tradeoff.)
+			if (function_exists('tidy_parse_string')) {
+				$tidy = tidy_parse_string($html, $tidy_config, 'UTF8');
+				$tidy->cleanRepair();
+				$html = $tidy->value;
+			}		
+			$readability = new Readability($html, $effective_url);
+			if ($links == 'footnotes') $readability->convertLinksToFootnotes = true;
+			$extract_result = $readability->init();
+			// content block is detected element
+			$content_block = $readability->getContent();
+		} else {
+			$readability = new Readability($html, $effective_url);
+			// content block is entire document (for now...)
+			$content_block = $readability->dom;			
+		}
+		if ($extract_pattern) {
+			$xpath = new DOMXPath($readability->dom);
+			$elems = @$xpath->query($extract_pattern, $content_block);
+			// check if our custom extraction pattern matched
+			if ($elems && $elems->length > 0) {
+				$extract_result = true;				
+				// get the first matched element
+				$content_block = $elems->item(0);
+				// clean it up
+				$readability->removeScripts($content_block);
+				$readability->prepArticle($content_block);
+			}
+		}
+	}
+	// if we failed to extract content...
+	if (!$extract_result) {
+		if ($exclude_on_fail) continue; // skip this and move to next item
+		if (!$valid_key) {
+			$html = $options->error_message;
+		} else {
+			$html = $options->error_message_with_key;
+		}
+		// keep the original item description
+		$html .= $item->get_description();
+	} else {
+		$readability->clean($content_block, 'select');
+		if ($options->rewrite_relative_urls) makeAbsolute($effective_url, $content_block);
+		if ($extract_pattern) {
+			// get outerHTML
+			$html = $content_block->ownerDocument->saveXML($content_block);
+		} else {
+			$html = $content_block->innerHTML;
+		}
+		// post-processing cleanup
+		$html = preg_replace('!<p>[\s\h\v]*</p>!u', '', $html);
 		if ($links == 'remove') {
 			$html = preg_replace('!</?a[^>]*>!', '', $html);
 		}
@@ -535,14 +674,7 @@ foreach ($items as $key => $item) {
 		} else {
 			$html = $options->message_to_prepend_with_key.$html;	
 			$html .= $options->message_to_append_with_key;
-		}
-	} else {
-		if (!$valid_key) {
-			$html = $options->error_message;
-		} else {
-			$html = $options->error_message_with_key;
-		}
-		$html .= $item->get_description();
+		}	
 	}
 	if ($format == 'atom') {
 		$newitem->addElement('content', $html);
@@ -551,7 +683,11 @@ foreach ($items as $key => $item) {
 			$newitem->addElement('author', array('name'=>$author->get_name()));
 		}
 	} else {
-		$newitem->addElement('guid', $item->get_permalink(), array('isPermaLink'=>'true'));
+		if ($valid_key && isset($_GET['pubsub'])) { // used only on fivefilters.org at the moment
+			$newitem->addElement('guid', 'http://fivefilters.org/content-only/redirect.php?url='.urlencode($item->get_permalink()), array('isPermaLink'=>'false'));
+		} else {
+			$newitem->addElement('guid', $item->get_permalink(), array('isPermaLink'=>'true'));
+		}
 		$newitem->setDescription($html);
 		if ((int)$item->get_date('U') > 0) {
 			$newitem->setDate((int)$item->get_date('U'));

@@ -3,14 +3,16 @@
 // RSS 0.91, 0.92, 0.93 and 0.94  Officially obsoleted by 2.0
 // So, define constants for RSS 1.0, RSS 2.0 and ATOM 	
 
-	define('RSS1', 'RSS 1.0', true);
-	define('RSS2', 'RSS 2.0', true);
-	define('ATOM', 'ATOM', true);
+define('RSS1', 'RSS 1.0', true);
+define('RSS2', 'RSS 2.0', true);
+define('ATOM', 'ATOM', true);
 
  /**
  * Univarsel Feed Writer class
  *
- * Genarate RSS 1.0, RSS2.0 and ATOM Feed
+ * Genarate RSS 1.0, RSS2.0 and ATOM Feed.
+ * Modified for FiveFilters.org's Full-Text RSS project
+ * to allow for inclusion of hubs
  *                             
  * @package     UnivarselFeedWriter
  * @author      Anis uddin Ahmad <anisniit@gmail.com>
@@ -18,10 +20,13 @@
  */
  class FeedWriter
  {
+	 private $self          = null;     // self URL - http://feed2.w3.org/docs/warning/MissingAtomSelfLink.html
+	 private $hubs          = array();  // PubSubHubbub hubs
 	 private $channels      = array();  // Collection of channel elements
 	 private $items         = array();  // Collection of items as object of FeedItem class.
 	 private $data          = array();  // Store some other version wise data
 	 private $CDATAEncoding = array();  // The tag names which have to encoded as CDATA
+	 private $xsl			= null;		// stylesheet to render RSS (used by Chrome)
 	 
 	 private $version   = null; 
 	
@@ -113,7 +118,6 @@
 		$this->items[] = $feedItem;    
 	}
 	
-	
 	// Wrapper functions -------------------------------------------------------------------
 	
 	/**
@@ -127,6 +131,42 @@
 	{
 		$this->setChannelElement('title', $title);
 	}
+	
+	/**
+	* Add a hub to the channel element
+	* 
+	* @access   public
+	* @param    string URL
+	* @return   void
+	*/
+	public function addHub($hub)
+	{
+		$this->hubs[] = $hub;    
+	}
+	
+	/**
+	* Set XSL URL
+	* 
+	* @access   public
+	* @param    string URL
+	* @return   void
+	*/
+	public function setXsl($xsl)
+	{
+		$this->xsl = $xsl;    
+	}	
+	
+	/**
+	* Set self URL
+	* 
+	* @access   public
+	* @param    string URL
+	* @return   void
+	*/
+	public function setSelf($self)
+	{
+		$this->self = $self;    
+	}	
 	
 	/**
 	* Set the 'description' channel element
@@ -213,6 +253,7 @@
 		
 		if($this->version == RSS2)
 		{
+			if ($this->xsl) $out .= '<?xml-stylesheet type="text/xsl" href="'.htmlspecialchars($this->xsl).'"?>' . PHP_EOL;
 			$out .= '<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">' . PHP_EOL;
 		}    
 		elseif($this->version == RSS1)
@@ -315,7 +356,17 @@
 		switch ($this->version) 
 		{
 		   case RSS2: 
-				echo '<channel>' . PHP_EOL;        
+				echo '<channel>' . PHP_EOL;    
+				// add hubs
+				foreach ($this->hubs as $hub) {
+					//echo $this->makeNode('link', '', array('rel'=>'hub', 'href'=>$hub, 'xmlns'=>'http://www.w3.org/2005/Atom'));
+					echo '<link rel="hub"  href="'.htmlspecialchars($hub).'" xmlns="http://www.w3.org/2005/Atom" />' . PHP_EOL;
+				}
+				// add self
+				if (isset($this->self)) {
+					//echo $this->makeNode('link', '', array('rel'=>'self', 'href'=>$this->self, 'xmlns'=>'http://www.w3.org/2005/Atom'));
+					echo '<link rel="self" href="'.htmlspecialchars($this->self).'" xmlns="http://www.w3.org/2005/Atom" />' . PHP_EOL;
+				}
 				break;
 		   case RSS1: 
 				echo (isset($this->data['ChannelAbout']))? "<channel rdf:about=\"{$this->data['ChannelAbout']}\">" : "<channel rdf:about=\"{$this->channels['link']}\">";

@@ -2,6 +2,16 @@ FiveFilters.org: Full-Text RSS
 http://fivefilters.org/content-only/
 CHANGELOG
 ------------------------------------
+2.5 (2011-01-08)
+ - New option: custom extraction pattern (CSS selectors)
+ - New option: allowed URLs (restrict service to pre-defined feeds/domains)
+ - New option: exclude items on fail (remove items from feed if content extraction fails)
+ - Remove 'http://' from URL before form submission (prevents errors on hosts which have overly vigilant security software)
+ - Allow overriding of index.php with custom_index.php
+ - config.php now required (override with custom_config.php)
+ - index.php now uses config.php to determine what to display
+ - Bug fix: occasional fatal error in IRI::__toString() (IRI updated)
+ - Bug fix: workaround for PHP bug http://bugs.php.net/51192 (fixed in HumbleHttpAgent.php)
 
 2.2 (2010-10-30)
  - Character-encoding detection improved (minor change)
